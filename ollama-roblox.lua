@@ -1,5 +1,5 @@
 -- ollama roblox chat
--- needs ollama running locally + luna ui
+-- needs ollama running locally + starlight ui
 -- works on most executors (synapse, krnl, fluxus, wave, etc.)
 
 local Players = game:GetService("Players")
@@ -17,7 +17,8 @@ if not http_request then
     return
 end
 
-local Luna = loadstring(game:HttpGet("https://raw.nebulasoftworks.xyz/luna", true))()
+local Starlight = loadstring(game:HttpGet("https://raw.nebulasoftworks.xyz/starlight"))()
+local NebulaIcons = loadstring(game:HttpGet("https://raw.nebulasoftworks.xyz/nebula-icon-library-loader"))()
 
 -- settings
 local Settings = {
@@ -213,7 +214,7 @@ local function typingAnim(paragraph, label, duration)
         elapsed = elapsed + dt
         if elapsed >= duration then alive = false; conn:Disconnect() return end
         i = (i % #dots) + 1
-        pcall(function() paragraph:Set({ Title = label, Text = "Typing" .. dots[i] }) end)
+        pcall(function() paragraph:Set({ Content = "Typing" .. dots[i] }) end)
     end)
     return { Disconnect = function()
         alive = false
@@ -253,55 +254,57 @@ local function formatPrivateDisplay()
     return txt
 end
 
--- setup the ui
-local Window = Luna:CreateWindow({
+-- ========================================
+-- UI SETUP
+-- ========================================
+local Window = Starlight:CreateWindow({
     Name = "Ollama AI",
     Subtitle = "local AI for roblox",
-    LogoID = nil,
-    LoadingEnabled = true,
-    LoadingTitle = "Ollama AI",
-    LoadingSubtitle = "connecting...",
-    ConfigSettings = { RootFolder = nil, ConfigFolder = "OllamaAI" },
-    KeySystem = false,
+    LoadingSettings = {
+        Title = "Ollama AI",
+        Subtitle = "connecting...",
+    },
+    FileSettings = {
+        ConfigFolder = "OllamaAI",
+    },
 })
 
 -- ========================================
--- TAB 1: PRIVATE CHAT (nobody sees this but u)
+-- TAB 1: PRIVATE CHAT
 -- ========================================
-local PrivateTab = Window:CreateTab({
+local ChatTabSection = Window:CreateTabSection("Chat")
+local PrivateTab = ChatTabSection:CreateTab({
     Name = "Private Chat",
-    Icon = "chat",
-    ImageSource = "Material",
-    ShowTitle = true,
+    Icon = NebulaIcons:GetIcon("chat", "Material"),
+    Columns = 1,
 })
 
-PrivateTab:CreateSection("Private AI Chat")
-PrivateTab:CreateParagraph({
-    Title = "Private Chat",
-    Text = "only you can see these messages. press enter to send.",
+local PrivateGroup = PrivateTab:CreateGroupbox({
+    Name = "Private AI Chat",
+    Column = 1,
 })
 
-PrivateTab:CreateDivider()
+PrivateGroup:CreateLabel({ Name = "only you can see these messages. press enter to send." })
+PrivateGroup:CreateDivider()
 
-local PrivateMessagesParagraph = PrivateTab:CreateParagraph({
-    Title = "Chat",
-    Text = "No messages yet. Type below to start chatting!",
+local PrivateMessagesParagraph = PrivateGroup:CreateParagraph({
+    Name = "Chat",
+    Content = "nothing here yet. type something below!",
 })
 
-PrivateTab:CreateDivider()
+PrivateGroup:CreateDivider()
 
-local PrivateInput = PrivateTab:CreateInput({
+local PrivateInput = PrivateGroup:CreateInput({
     Name = "Message",
-    PlaceholderText = "say something...",
     CurrentValue = "",
-    Numeric = false,
+    PlaceholderText = "say something...",
     MaxCharacters = 500,
     Enter = true,
     Callback = function(text)
         if text == "" then return end
 
         table.insert(PrivateMessages, { role = "user", content = text })
-        PrivateMessagesParagraph:Set({ Title = "Chat", Text = formatPrivateDisplay() })
+        PrivateMessagesParagraph:Set({ Content = formatPrivateDisplay() })
 
         local typing = nil
         if Settings.TypingAnimation then
@@ -318,26 +321,26 @@ local PrivateInput = PrivateTab:CreateInput({
             if done then
                 if typing then typing:Disconnect() end
                 table.insert(PrivateMessages, { role = "assistant", content = response })
-                PrivateMessagesParagraph:Set({ Title = "Chat", Text = formatPrivateDisplay() })
+                PrivateMessagesParagraph:Set({ Content = formatPrivateDisplay() })
             end
         end)
 
         PrivateInput:Set({ CurrentValue = "" })
     end,
-}, "PrivateMsg")
+}, "PrivateMsgInput")
 
-PrivateTab:CreateDivider()
+PrivateGroup:CreateDivider()
 
-PrivateTab:CreateButton({
+PrivateGroup:CreateButton({
     Name = "Clear Conversation",
     Callback = function()
         PrivateMessages = {}
-        PrivateMessagesParagraph:Set({ Title = "Chat", Text = "Conversation cleared." })
-        Luna:Notification({ Title = "Cleared", Content = "Private chat history cleared." })
+        PrivateMessagesParagraph:Set({ Content = "wiped." })
+        Starlight:Notification({ Title = "cleared", Content = "private chat history gone" })
     end,
 })
 
-PrivateTab:CreateButton({
+PrivateGroup:CreateButton({
     Name = "Export Chat",
     Callback = function()
         local text = ""
@@ -349,49 +352,47 @@ PrivateTab:CreateButton({
         elseif syn and syn.write_clipboard then
             syn.write_clipboard(text)
         end
-        Luna:Notification({ Title = "Copied", Content = "Chat copied to clipboard." })
+        Starlight:Notification({ Title = "copied", Content = "chat copied to clipboard" })
     end,
 })
 
 -- ========================================
--- TAB 2: PROXIMITY CHAT (ai talks to nearby players)
+-- TAB 2: PROXIMITY CHAT
 -- ========================================
-local ProximityTab = Window:CreateTab({
+local ProximityTab = ChatTabSection:CreateTab({
     Name = "Proximity Chat",
-    Icon = "record_voice_over",
-    ImageSource = "Material",
-    ShowTitle = true,
+    Icon = NebulaIcons:GetIcon("record_voice_over", "Material"),
+    Columns = 1,
 })
 
-ProximityTab:CreateSection("Auto AI Responses")
-ProximityTab:CreateParagraph({
-    Title = "how this works",
-    Text = "when someone near you chats, the AI replies in game chat automatically. mess with the radius and delay in settings.",
+local ProximityGroup = ProximityTab:CreateGroupbox({
+    Name = "Auto AI Responses",
+    Column = 1,
 })
 
-ProximityTab:CreateDivider()
+ProximityGroup:CreateLabel({ Name = "when someone near you chats, the AI replies in game chat" })
+ProximityGroup:CreateDivider()
 
-local ProximityMessagesParagraph = ProximityTab:CreateParagraph({
-    Title = "Activity Log",
-    Text = "Waiting for nearby players to chat...",
+local ProximityMessagesParagraph = ProximityGroup:CreateParagraph({
+    Name = "Activity Log",
+    Content = "waiting for someone to talk nearby...",
 })
 
-ProximityTab:CreateDivider()
+ProximityGroup:CreateDivider()
 
-local ProximityStatusParagraph = ProximityTab:CreateParagraph({
-    Title = "Status",
-    Text = "Auto-Respond: ON | Radius: " .. Settings.ProximityRadius .. " studs | Nearby: 0",
+local ProximityStatusParagraph = ProximityGroup:CreateParagraph({
+    Name = "Status",
+    Content = "auto: ON | radius: 50 studs | nearby: 0 | blacklisted: 0",
 })
 
-ProximityTab:CreateDivider()
+ProximityGroup:CreateDivider()
 
-ProximityTab:CreateSection("Manual Input")
+ProximityGroup:CreateLabel({ Name = "Manual Input" })
 
-ProximityTab:CreateInput({
+ProximityGroup:CreateInput({
     Name = "Say Something",
-    PlaceholderText = "Type to send as AI manually...",
     CurrentValue = "",
-    Numeric = false,
+    PlaceholderText = "type to send as AI manually...",
     MaxCharacters = 500,
     Enter = true,
     Callback = function(text)
@@ -399,33 +400,36 @@ ProximityTab:CreateInput({
         local chatText = Settings.ProximityPrefix ~= "" and (Settings.ProximityPrefix .. " " .. text) or text
         sendProximityChat(chatText)
         table.insert(ProximityMessages, "[Manual]: " .. text)
-        ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = formatProximityDisplay() })
+        ProximityMessagesParagraph:Set({ Content = formatProximityDisplay() })
     end,
-}, "ProximityManual")
+}, "ProximityManualInput")
 
-ProximityTab:CreateButton({
+ProximityGroup:CreateButton({
     Name = "Clear Log",
     Callback = function()
         ProximityMessages = {}
-        ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = "Log cleared." })
+        ProximityMessagesParagraph:Set({ Content = "log cleared." })
     end,
 })
 
-ProximityTab:CreateDropdown({
-    Name = "Quick Say",
+-- quick say dropdown nested in a label
+local QuickSayLabel = ProximityGroup:CreateLabel({ Name = "Quick Say" })
+QuickSayLabel:AddDropdown({
     Options = {"Hello everyone!","Anyone wanna play?","GG!","Nice!","Good luck!","Thanks!","Let's go!","Follow me!","Wait for me!","I'll help!"},
-    CurrentOption = { "Hello everyone!" },
-    MultipleOptions = false,
-    Callback = function(option)
-        local text = type(option) == "table" and option[1] or option
+    CurrentOption = {"Hello everyone!"},
+    Callback = function(opts)
+        local text = opts[1]
+        if not text then return end
         local chatText = Settings.ProximityPrefix ~= "" and (Settings.ProximityPrefix .. " " .. text) or text
         sendProximityChat(chatText)
         table.insert(ProximityMessages, "[Quick]: " .. text)
-        ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = formatProximityDisplay() })
+        ProximityMessagesParagraph:Set({ Content = formatProximityDisplay() })
     end,
-}, "QuickSay")
+}, "QuickSayDD")
 
--- listen for nearby players chatting
+-- ========================================
+-- PROXIMITY CHAT: Listen for nearby messages
+-- ========================================
 local function setupProximityListener()
     local success = pcall(function()
         local ch = TextChatService:FindFirstChild("TextChannels")
@@ -450,7 +454,7 @@ local function setupProximityListener()
                 isProcessing = true
 
                 table.insert(ProximityMessages, "[" .. sender.Name .. "]: " .. msgText)
-                ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = formatProximityDisplay() })
+                ProximityMessagesParagraph:Set({ Content = formatProximityDisplay() })
 
                 task.delay(Settings.ResponseDelay, function()
                     local typing = nil
@@ -480,7 +484,6 @@ local function setupProximityListener()
                                 table.insert(ProximityMemory, { role = "user", content = sender.Name .. ": " .. msgText })
                                 table.insert(ProximityMemory, { role = "assistant", content = clean })
 
-                                -- keep memory from getting too big
                                 if #ProximityMemory > Settings.MaxMemory then
                                     local trimmed = {}
                                     for i = #ProximityMemory - Settings.MaxMemory + 1, #ProximityMemory do
@@ -492,7 +495,7 @@ local function setupProximityListener()
                                 table.insert(ProximityMessages, "[AI Error]: " .. response)
                             end
 
-                            ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = formatProximityDisplay() })
+                            ProximityMessagesParagraph:Set({ Content = formatProximityDisplay() })
                             isProcessing = false
                         end
                     end)
@@ -532,7 +535,7 @@ local function setupProximityListener()
 
                             isProcessing = true
                             table.insert(ProximityMessages, "[" .. name .. "]: " .. msgText)
-                            ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = formatProximityDisplay() })
+                            ProximityMessagesParagraph:Set({ Content = formatProximityDisplay() })
 
                             task.delay(Settings.ResponseDelay, function()
                                 local apiMessages = {
@@ -556,7 +559,7 @@ local function setupProximityListener()
                                         else
                                             table.insert(ProximityMessages, "[AI Error]: " .. response)
                                         end
-                                        ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = formatProximityDisplay() })
+                                        ProximityMessagesParagraph:Set({ Content = formatProximityDisplay() })
                                         isProcessing = false
                                     end
                                 end)
@@ -581,8 +584,7 @@ task.spawn(function()
             local bl = 0
             for _ in pairs(Settings.IgnoredPlayers) do bl = bl + 1 end
             ProximityStatusParagraph:Set({
-                Title = "Status",
-                Text = "Auto: " .. (Settings.AutoRespond and "ON" or "OFF") .. " | Radius: " .. Settings.ProximityRadius .. " studs | Nearby: " .. nearby .. " | Blacklisted: " .. bl,
+                Content = "auto: " .. (Settings.AutoRespond and "ON" or "OFF") .. " | radius: " .. Settings.ProximityRadius .. " studs | nearby: " .. nearby .. " | blacklisted: " .. bl,
             })
         end)
     end
@@ -593,189 +595,178 @@ setupProximityListener()
 -- ========================================
 -- TAB 3: SETTINGS
 -- ========================================
-local SettingsTab = Window:CreateTab({
+local SettingsTabSection = Window:CreateTabSection("Settings")
+local SettingsTab = SettingsTabSection:CreateTab({
     Name = "Settings",
-    Icon = "settings",
-    ImageSource = "Material",
-    ShowTitle = true,
+    Icon = NebulaIcons:GetIcon("settings", "Material"),
+    Columns = 2,
 })
 
-SettingsTab:CreateSection("Connection")
+-- Connection groupbox
+local ConnGroup = SettingsTab:CreateGroupbox({
+    Name = "Connection",
+    Column = 1,
+})
 
-SettingsTab:CreateInput({
+ConnGroup:CreateInput({
     Name = "Ollama URL",
-    Description = "where ollama is running",
-    PlaceholderText = "http://localhost:11434",
     CurrentValue = Settings.OllamaURL,
-    Numeric = false,
-    MaxCharacters = 200,
-    Enter = false,
+    PlaceholderText = "http://localhost:11434",
     Callback = function(text) Settings.OllamaURL = text end,
-}, "OllamaURL")
+}, "OllamaURLInput")
 
-SettingsTab:CreateButton({
+ConnGroup:CreateButton({
     Name = "Test Connection",
-    Description = "check if ollama is reachable",
     Callback = function()
         testOllama(function(ok, msg)
             if ok then
-                Luna:Notification({ Title = "nice", Content = "ollama is running at " .. Settings.OllamaURL })
+                Starlight:Notification({ Title = "nice", Content = "ollama is running at " .. Settings.OllamaURL })
             else
-                Luna:Notification({ Title = "nope", Content = "cant reach ollama: " .. (msg or "idk why") })
+                Starlight:Notification({ Title = "nope", Content = "cant reach ollama: " .. (msg or "idk why") })
             end
         end)
     end,
 })
 
-local ModelDropdown = SettingsTab:CreateDropdown({
-    Name = "Model",
-    Description = "which model to use",
+-- model dropdown nested in a label
+local ModelLabel = ConnGroup:CreateLabel({ Name = "Model" })
+ModelLabel:AddDropdown({
     Options = { "Loading..." },
     CurrentOption = { Settings.Model },
-    MultipleOptions = false,
-    Callback = function(option) Settings.Model = type(option) == "table" and option[1] or option end,
-}, "Model")
+    Callback = function(opts)
+        Settings.Model = opts[1] or Settings.Model
+    end,
+}, "ModelDD")
 
-SettingsTab:CreateButton({
+ConnGroup:CreateButton({
     Name = "Refresh Models",
     Callback = function()
         listModels(function(models, err)
             if #models > 0 then
-                ModelDropdown:Set({ Options = models, CurrentOption = { models[1] } })
                 Settings.Model = models[1]
-                Luna:Notification({ Title = "ok", Content = #models .. " model(s) found" })
+                Starlight:Notification({ Title = "ok", Content = #models .. " model(s) found" })
             else
-                Luna:Notification({ Title = "oops", Content = err or "none found. is ollama running?" })
+                Starlight:Notification({ Title = "oops", Content = err or "none found. is ollama running?" })
             end
         end)
     end,
 })
 
-SettingsTab:CreateDivider()
-SettingsTab:CreateSection("Generation")
+-- Generation groupbox
+local GenGroup = SettingsTab:CreateGroupbox({
+    Name = "Generation",
+    Column = 2,
+})
 
-SettingsTab:CreateSlider({
+GenGroup:CreateSlider({
     Name = "Temperature",
     Range = { 0, 2 },
     Increment = 0.1,
     CurrentValue = Settings.Temperature,
     Callback = function(value) Settings.Temperature = value end,
-}, "Temperature")
+}, "TempSlider")
 
-SettingsTab:CreateSlider({
+GenGroup:CreateSlider({
     Name = "Memory Length",
     Range = { 5, 100 },
     Increment = 5,
     CurrentValue = Settings.MaxMemory,
     Callback = function(value) Settings.MaxMemory = value end,
-}, "MaxMemory")
+}, "MemSlider")
 
-SettingsTab:CreateDivider()
-SettingsTab:CreateSection("Display")
+-- Display groupbox
+local DisplayGroup = SettingsTab:CreateGroupbox({
+    Name = "Display",
+    Column = 1,
+})
 
-SettingsTab:CreateToggle({
-    Name = "Streaming Responses",
-    Description = "word by word (might not work on all executors)",
-    CurrentValue = Settings.Streaming,
-    Callback = function(value) Settings.Streaming = value end,
-}, "Streaming")
-
-SettingsTab:CreateToggle({
+DisplayGroup:CreateToggle({
     Name = "Typing Animation",
-    Description = "show typing dots while waiting",
     CurrentValue = Settings.TypingAnimation,
     Callback = function(value) Settings.TypingAnimation = value end,
-}, "TypingAnim")
+}, "TypingToggle")
 
-SettingsTab:CreateToggle({
+DisplayGroup:CreateToggle({
     Name = "Auto-Scroll",
     CurrentValue = Settings.AutoScroll,
     Callback = function(value) Settings.AutoScroll = value end,
-}, "AutoScroll")
+}, "ScrollToggle")
 
-SettingsTab:CreateToggle({
-    Name = "Sound Effects",
-    CurrentValue = Settings.SoundEffects,
-    Callback = function(value) Settings.SoundEffects = value end,
-}, "SoundFX")
+-- Proximity groupbox
+local ProxGroup = SettingsTab:CreateGroupbox({
+    Name = "Proximity Chat",
+    Column = 2,
+})
 
-SettingsTab:CreateDivider()
-SettingsTab:CreateSection("Proximity Chat")
-
-SettingsTab:CreateToggle({
+ProxGroup:CreateToggle({
     Name = "Auto-Respond",
-    Description = "AI responds to nearby players",
     CurrentValue = Settings.AutoRespond,
     Callback = function(value)
         Settings.AutoRespond = value
-        Luna:Notification({ Title = "Auto-Respond", Content = value and "on" or "off" })
+        Starlight:Notification({ Title = "auto-respond", Content = value and "on" or "off" })
     end,
-}, "AutoRespond")
+}, "AutoRespToggle")
 
-SettingsTab:CreateSlider({
+ProxGroup:CreateSlider({
     Name = "Proximity Radius",
-    Description = "how close players need to be (studs) - slider",
     Range = { 5, 500 },
     Increment = 1,
     CurrentValue = Settings.ProximityRadius,
     Callback = function(value) Settings.ProximityRadius = value end,
-}, "ProximityRadius")
+}, "RadiusSlider")
 
-SettingsTab:CreateInput({
+ProxGroup:CreateInput({
     Name = "Exact Radius",
-    Description = "type exact radius (1-999)",
-    PlaceholderText = tostring(Settings.ProximityRadius),
     CurrentValue = "",
+    PlaceholderText = tostring(Settings.ProximityRadius),
     Numeric = true,
     MaxCharacters = 4,
-    Enter = false,
     Callback = function(text)
         local num = tonumber(text)
         if num and num >= 1 and num <= 999 then
             Settings.ProximityRadius = num
-            Luna:Notification({ Title = "ok", Content = "radius: " .. num .. " studs" })
+            Starlight:Notification({ Title = "ok", Content = "radius: " .. num .. " studs" })
         else
-            Luna:Notification({ Title = "bad", Content = "enter 1-999" })
+            Starlight:Notification({ Title = "bad", Content = "enter 1-999" })
         end
     end,
-}, "ExactRadius")
+}, "ExactRadiusInput")
 
-SettingsTab:CreateSlider({
+ProxGroup:CreateSlider({
     Name = "Response Delay",
-    Description = "seconds before AI replies (feels more natural)",
     Range = { 0, 5 },
     Increment = 0.5,
     CurrentValue = Settings.ResponseDelay,
     Callback = function(value) Settings.ResponseDelay = value end,
-}, "ResponseDelay")
+}, "DelaySlider")
 
-SettingsTab:CreateInput({
+ProxGroup:CreateInput({
     Name = "Chat Prefix",
-    Description = "prefix for AI messages in chat",
-    PlaceholderText = "[AI]",
     CurrentValue = Settings.ProximityPrefix,
-    Numeric = false,
+    PlaceholderText = "[AI]",
     MaxCharacters = 20,
-    Enter = false,
     Callback = function(text) Settings.ProximityPrefix = text end,
-}, "ProxPrefix")
+}, "PrefixInput")
 
-SettingsTab:CreateDivider()
-SettingsTab:CreateSection("Player Blacklist")
-
-local BlacklistParagraph = SettingsTab:CreateParagraph({
-    Title = "Blacklisted Players",
-    Text = "none",
+-- Blacklist groupbox (spans both columns)
+local BlacklistGroup = SettingsTab:CreateGroupbox({
+    Name = "Player Blacklist",
+    Column = 1,
 })
 
-local BlacklistDropdown = SettingsTab:CreateDropdown({
-    Name = "Add to Blacklist",
-    Description = "AI wont respond to these players",
-    Options = {},
-    SpecialType = "Player",
-    MultipleOptions = false,
-    Callback = function(option)
-        local name = type(option) == "table" and option[1] or option
+local BlacklistParagraph = BlacklistGroup:CreateParagraph({
+    Name = "Blacklisted Players",
+    Content = "none",
+})
+
+-- blacklist add dropdown
+local BlacklistAddLabel = BlacklistGroup:CreateLabel({ Name = "Add to Blacklist" })
+BlacklistAddLabel:AddDropdown({
+    Special = 1, -- auto-populate with players
+    CurrentOption = {},
+    Callback = function(opts)
+        local name = opts[1]
+        if not name then return end
         local plr = Players:FindFirstChild(name)
         if plr then
             Settings.IgnoredPlayers[plr.UserId] = true
@@ -785,22 +776,21 @@ local BlacklistDropdown = SettingsTab:CreateDropdown({
                 if p then table.insert(list, p.Name) end
             end
             BlacklistParagraph:Set({
-                Title = "Blacklisted (" .. #list .. ")",
-                Text = #list > 0 and table.concat(list, ", ") or "none",
+                Content = #list > 0 and table.concat(list, ", ") or "none",
             })
-            Luna:Notification({ Title = "blocked", Content = plr.Name .. " added to blacklist" })
+            Starlight:Notification({ Title = "blocked", Content = plr.Name .. " added to blacklist" })
         end
     end,
-}, "BlacklistPlayer")
+}, "BlacklistAddDD")
 
-SettingsTab:CreateDropdown({
-    Name = "Remove from Blacklist",
-    Description = "unblock someone",
-    Options = {},
-    SpecialType = "Player",
-    MultipleOptions = false,
-    Callback = function(option)
-        local name = type(option) == "table" and option[1] or option
+-- blacklist remove dropdown
+local BlacklistRemoveLabel = BlacklistGroup:CreateLabel({ Name = "Remove from Blacklist" })
+BlacklistRemoveLabel:AddDropdown({
+    Special = 1,
+    CurrentOption = {},
+    Callback = function(opts)
+        local name = opts[1]
+        if not name then return end
         local plr = Players:FindFirstChild(name)
         if plr and Settings.IgnoredPlayers[plr.UserId] then
             Settings.IgnoredPlayers[plr.UserId] = nil
@@ -810,123 +800,110 @@ SettingsTab:CreateDropdown({
                 if p then table.insert(list, p.Name) end
             end
             BlacklistParagraph:Set({
-                Title = "Blacklisted (" .. #list .. ")",
-                Text = #list > 0 and table.concat(list, ", ") or "none",
+                Content = #list > 0 and table.concat(list, ", ") or "none",
             })
-            Luna:Notification({ Title = "unblocked", Content = plr.Name .. " removed" })
+            Starlight:Notification({ Title = "unblocked", Content = plr.Name .. " removed" })
         end
     end,
-}, "UnblockPlayer")
+}, "BlacklistRemoveDD")
 
-SettingsTab:CreateButton({
-    Name = "Refresh Player List",
-    Description = "update dropdown with current players",
-    Callback = function()
-        local names = {}
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then table.insert(names, p.Name) end
-        end
-        BlacklistDropdown:Set({ Options = names, CurrentOption = { names[1] or "" } })
-        Luna:Notification({ Title = "ok", Content = #names .. " players" })
-    end,
-})
-
-SettingsTab:CreateButton({
+BlacklistGroup:CreateButton({
     Name = "Clear Blacklist",
     Callback = function()
         Settings.IgnoredPlayers = {}
-        BlacklistParagraph:Set({ Title = "Blacklisted Players", Text = "none" })
-        Luna:Notification({ Title = "cleared", Content = "everyone unblocked" })
+        BlacklistParagraph:Set({ Content = "none" })
+        Starlight:Notification({ Title = "cleared", Content = "everyone unblocked" })
     end,
 })
 
-SettingsTab:CreateButton({
+BlacklistGroup:CreateButton({
     Name = "Blacklist Everyone",
-    Description = "block everyone in the server",
     Callback = function()
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer then Settings.IgnoredPlayers[p.UserId] = true end
         end
         local count = 0
         for _ in pairs(Settings.IgnoredPlayers) do count = count + 1 end
-        BlacklistParagraph:Set({
-            Title = "Blacklisted (" .. count .. ")",
-            Text = count .. " players blocked",
-        })
-        Luna:Notification({ Title = "done", Content = count .. " players blocked" })
+        BlacklistParagraph:Set({ Content = count .. " players blocked" })
+        Starlight:Notification({ Title = "done", Content = count .. " players blocked" })
     end,
 })
 
-SettingsTab:CreateDivider()
-SettingsTab:CreateSection("Roleplay Preset")
+-- Roleplay groupbox
+local RPGroup = SettingsTab:CreateGroupbox({
+    Name = "Roleplay Preset",
+    Column = 2,
+})
 
 local PresetNames = {}
 for name, _ in pairs(Presets) do table.insert(PresetNames, name) end
 table.sort(PresetNames)
 
-SettingsTab:CreateDropdown({
-    Name = "AI Personality",
+local PresetLabel = RPGroup:CreateLabel({ Name = "AI Personality" })
+PresetLabel:AddDropdown({
     Options = PresetNames,
     CurrentOption = { CurrentPreset },
-    MultipleOptions = false,
-    Callback = function(option)
-        CurrentPreset = type(option) == "table" and option[1] or option
+    Callback = function(opts)
+        CurrentPreset = opts[1] or CurrentPreset
         UseCustomPrompt = false
-        Luna:Notification({ Title = "switched", Content = "now using: " .. CurrentPreset })
+        Starlight:Notification({ Title = "switched", Content = "now using: " .. CurrentPreset })
     end,
-}, "Preset")
+}, "PresetDD")
 
-SettingsTab:CreateDivider()
-SettingsTab:CreateSection("Custom Prompt")
+-- Custom prompt groupbox
+local PromptGroup = SettingsTab:CreateGroupbox({
+    Name = "Custom Prompt",
+    Column = 1,
+})
 
-SettingsTab:CreateInput({
+PromptGroup:CreateInput({
     Name = "Custom System Prompt",
-    Description = "write your own prompt to override the preset",
-    PlaceholderText = "type here...",
     CurrentValue = CustomPrompt,
-    Numeric = false,
+    PlaceholderText = "type here...",
     MaxCharacters = 2000,
-    Enter = false,
     Callback = function(text) CustomPrompt = text end,
-}, "CustomPrompt")
+}, "CustomPromptInput")
 
-SettingsTab:CreateButton({
+PromptGroup:CreateButton({
     Name = "Apply Custom Prompt",
     Callback = function()
         if CustomPrompt ~= "" then
             UseCustomPrompt = true
-            Luna:Notification({ Title = "applied", Content = "using your custom prompt" })
+            Starlight:Notification({ Title = "applied", Content = "using your custom prompt" })
         else
-            Luna:Notification({ Title = "empty", Content = "write something first" })
+            Starlight:Notification({ Title = "empty", Content = "write something first" })
         end
     end,
 })
 
-SettingsTab:CreateButton({
+PromptGroup:CreateButton({
     Name = "Reset to Preset",
     Callback = function()
         UseCustomPrompt = false
-        Luna:Notification({ Title = "reset", Content = "back to: " .. CurrentPreset })
+        Starlight:Notification({ Title = "reset", Content = "back to: " .. CurrentPreset })
     end,
 })
 
-SettingsTab:CreateButton({
+PromptGroup:CreateButton({
     Name = "View Current Prompt",
     Callback = function()
         local prompt = getSystemPrompt()
-        Luna:Notification({ Title = "prompt", Content = prompt:sub(1, 200) .. (#prompt > 200 and "..." or "") })
+        Starlight:Notification({ Title = "prompt", Content = prompt:sub(1, 200) .. (#prompt > 200 and "..." or "") })
     end,
 })
 
-SettingsTab:CreateDivider()
-SettingsTab:CreateSection("Server")
+-- Server groupbox
+local ServerGroup = SettingsTab:CreateGroupbox({
+    Name = "Server",
+    Column = 2,
+})
 
-SettingsTab:CreateButton({
+ServerGroup:CreateButton({
     Name = "Rejoin",
     Callback = function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end,
 })
 
-SettingsTab:CreateButton({
+ServerGroup:CreateButton({
     Name = "Server Hop",
     Callback = function()
         pcall(function()
@@ -942,12 +919,12 @@ SettingsTab:CreateButton({
                     end
                 end
             end
-            Luna:Notification({ Title = "nope", Content = "no other servers found" })
+            Starlight:Notification({ Title = "nope", Content = "no other servers found" })
         end)
     end,
 })
 
-SettingsTab:CreateButton({
+ServerGroup:CreateButton({
     Name = "Copy Job ID",
     Callback = function()
         if setclipboard then
@@ -955,14 +932,17 @@ SettingsTab:CreateButton({
         elseif syn and syn.write_clipboard then
             syn.write_clipboard(game.JobId)
         end
-        Luna:Notification({ Title = "copied", Content = game.JobId })
+        Starlight:Notification({ Title = "copied", Content = game.JobId })
     end,
 })
 
-SettingsTab:CreateDivider()
-SettingsTab:CreateSection("Danger Zone")
+-- Danger zone
+local DangerGroup = SettingsTab:CreateGroupbox({
+    Name = "Danger Zone",
+    Column = 1,
+})
 
-SettingsTab:CreateButton({
+DangerGroup:CreateButton({
     Name = "Clear Everything",
     Callback = function()
         PrivateMessages = {}
@@ -978,24 +958,22 @@ SettingsTab:CreateButton({
         Settings.AutoRespond = true
         Settings.ProximityPrefix = "[AI]"
         Settings.IgnoredPlayers = {}
-        PrivateMessagesParagraph:Set({ Title = "Chat", Text = "wiped." })
-        ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = "wiped." })
-        BlacklistParagraph:Set({ Title = "Blacklisted Players", Text = "none" })
-        Luna:Notification({ Title = "gone", Content = "everything reset" })
+        PrivateMessagesParagraph:Set({ Content = "wiped." })
+        ProximityMessagesParagraph:Set({ Content = "wiped." })
+        BlacklistParagraph:Set({ Content = "none" })
+        Starlight:Notification({ Title = "gone", Content = "everything reset" })
     end,
 })
 
-SettingsTab:CreateButton({
+DangerGroup:CreateButton({
     Name = "Destroy UI",
-    Description = "close this thing",
-    Callback = function() Luna:Destroy() end,
+    Callback = function() Starlight:Destroy() end,
 })
 
 -- load models on startup
 task.spawn(function()
     listModels(function(models, err)
         if #models > 0 then
-            ModelDropdown:Set({ Options = models, CurrentOption = { models[1] } })
             Settings.Model = models[1]
         else
             warn("[Ollama] couldnt load models: " .. (err or "idk"))
@@ -1003,5 +981,4 @@ task.spawn(function()
     end)
 end)
 
-Luna:LoadAutoloadConfig()
-Luna:Notification({ Title = "Ollama AI", Content = "ready - " .. Settings.OllamaURL .. " | " .. Settings.Model })
+Starlight:Notification({ Title = "Ollama AI", Content = "ready - " .. Settings.OllamaURL .. " | " .. Settings.Model })
