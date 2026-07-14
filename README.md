@@ -2,8 +2,6 @@
 
 Chat with a local AI inside any Roblox game. Uses [Ollama](https://ollama.com/) running on your machine — no cloud APIs, no API keys, fully offline.
 
-![Main UI](screenshots/ui-main.png)
-
 ---
 
 ## Features
@@ -15,8 +13,6 @@ Chat with a local AI inside any Roblox game. Uses [Ollama](https://ollama.com/) 
 - **Player Blacklist** — Block specific players the AI won't respond to
 - **Adjustable Radius** — 5 to 500 studs, slider or exact number input
 - **Works on any executor** — Synapse X, KRNL, Wave, Fluxus, etc.
-
-![Proximity Chat](screenshots/proximity-chat.png)
 
 ---
 
@@ -60,16 +56,12 @@ Run the script in any Roblox game. The Luna UI will appear with 3 tabs.
 3. The AI responds privately — nobody else sees it
 4. Use **Export Chat** to copy the conversation
 
-![Private Chat](screenshots/private-chat.png)
-
 ### Proximity Chat
 
 1. Open the **Proximity Chat** tab
 2. Make sure **Auto-Respond** is ON in Settings
 3. When a player near you chats, the AI automatically responds in game chat
 4. The AI keeps context of the conversation
-
-![Proximity Chat Active](screenshots/proximity-active.png)
 
 ### Player Blacklist
 
@@ -79,16 +71,12 @@ Run the script in any Roblox game. The Luna UI will appear with 3 tabs.
 4. Use **Refresh Player List** to update the dropdown when players join/leave
 5. **Blacklist All** blocks everyone in the server at once
 
-![Blacklist](screenshots/blacklist.png)
-
 ### Radius Control
 
 1. Go to **Settings** → **Proximity Chat**
 2. Use the **slider** (5-500 studs) for quick adjustment
 3. Or type an **exact value** (1-999) in the input field
 4. The status bar shows your current radius and nearby player count
-
-![Radius](screenshots/radius.png)
 
 ### Roleplay Presets
 
