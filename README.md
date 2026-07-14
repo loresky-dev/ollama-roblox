@@ -1,141 +1,146 @@
-# Ollama AI Chat for Roblox
+# ollama roblox
 
-Chat with a local AI inside any Roblox game. Uses [Ollama](https://ollama.com/) running on your machine — no cloud APIs, no API keys, fully offline.
+run a local AI in any roblox game. no cloud APIs, no api keys, no monthly subscriptions. just ollama running on your pc and a script in your executor.
 
----
+has two modes:
+- **private chat** - talk to the AI privately, nobody else sees it
+- **proximity chat** - AI auto-replies to nearby players in game chat
 
-## Features
-
-- **Private Chat** — Talk to the AI privately, responses only visible to you
-- **Proximity Chat** — AI auto-responds to nearby players in game chat
-- **15 Roleplay Presets** — Pirate, Knight, Wizard, Detective, Comedian, and more
-- **Custom Prompts** — Write your own system prompt for any persona
-- **Player Blacklist** — Block specific players the AI won't respond to
-- **Adjustable Radius** — 5 to 500 studs, slider or exact number input
-- **Works on any executor** — Synapse X, KRNL, Wave, Fluxus, etc.
+also comes with a web UI for chatting with ollama in your browser (in the `web/` folder).
 
 ---
 
-## Prerequisites
+## what you need
 
-1. **Ollama** installed and running — [Download](https://ollama.com/download)
-2. At least one model pulled:
-   ```bash
+1. [Ollama](https://ollama.com/download) installed and running
+2. at least one model pulled:
+   ```
    ollama pull qwen2.5:7b
    ```
-3. A **Roblox executor** that supports HTTP requests
-4. **Luna Interface Suite** loaded by your executor (auto-loaded by the script)
+3. a roblox executor that supports HTTP requests (synapse, krnl, fluxus, wave, etc.)
 
 ---
 
-## Setup
+## setup
 
-### 1. Start Ollama
+1. start ollama (open the app or run `ollama serve`)
+2. copy the contents of `ollama-roblox.lua` into your executor
+3. run it in any game. the luna UI pops up with 3 tabs.
 
-Open the Ollama app or run:
-```bash
-ollama serve
+---
+
+## how to use
+
+### private chat
+
+open the Private Chat tab, type something, press enter. the AI responds privately. nobody else sees it. use Export Chat to copy everything.
+
+### proximity chat
+
+open the Proximity Chat tab. make sure Auto-Respond is ON in Settings. when someone near you types in chat, the AI replies automatically in game chat. it keeps context of the conversation too.
+
+### player blacklist
+
+go to Settings -> Player Blacklist. use the dropdown to add players. the AI ignores them completely. hit Refresh Player List when players join/leave. Blacklist All blocks everyone at once.
+
+### radius
+
+in Settings -> Proximity Chat, there's a slider (5-500 studs) and an exact input field (1-999). the status bar shows your current radius and how many players are nearby.
+
+### presets
+
+Settings -> Roleplay Preset has 15 personalities: Pirate Captain, Medieval Knight, Wizard, Detective, Comedian, etc. or write your own Custom Prompt.
+
+---
+
+## settings
+
+| setting | default | what it does |
+|---------|---------|-------------|
+| Ollama URL | `http://localhost:11434` | where ollama is running |
+| Model | `qwen2.5:7b` | which model to use |
+| Temperature | 0.7 | creativity (0 = boring, 2 = unhinged) |
+| Memory Length | 50 | how many messages to remember |
+| Proximity Radius | 50 studs | detection range |
+| Response Delay | 1.5s | delay before AI replies (feels more natural) |
+| Chat Prefix | `[AI]` | prefix for AI messages in game chat |
+| Auto-Respond | ON | toggle proximity responses |
+| Typing Animation | ON | typing dots while waiting |
+
+---
+
+## web UI
+
+there's also a simple web UI in the `web/` folder. it's a dark-themed chat interface for ollama that runs in your browser.
+
+### to run it:
+
+```
+cd web
+npm install
 ```
 
-### 2. Copy the script
+make sure ollama is running, then:
 
-Copy the entire contents of `ollama-roblox.lua` into your executor.
+```
+npm start
+```
 
-### 3. Execute
+or just double-click `Ollama Web.bat` on windows.
 
-Run the script in any Roblox game. The Luna UI will appear with 3 tabs.
+open http://localhost:3333 in your browser.
 
----
+### what it does
 
-## How to Use
+- dark cyberpunk theme
+- model picker with size display
+- streaming responses
+- markdown rendering (code blocks, bold, inline code)
+- stop generation button
+- single file server, no build step needed
 
-### Private Chat
+### changing the port
 
-1. Open the **Private Chat** tab
-2. Type a message and press Enter
-3. The AI responds privately — nobody else sees it
-4. Use **Export Chat** to copy the conversation
+edit the top of `web/server.js`:
 
-### Proximity Chat
-
-1. Open the **Proximity Chat** tab
-2. Make sure **Auto-Respond** is ON in Settings
-3. When a player near you chats, the AI automatically responds in game chat
-4. The AI keeps context of the conversation
-
-### Player Blacklist
-
-1. Go to **Settings** → **Player Blacklist**
-2. Use the dropdown to add players to the blacklist
-3. The AI will NOT respond to blacklisted players
-4. Use **Refresh Player List** to update the dropdown when players join/leave
-5. **Blacklist All** blocks everyone in the server at once
-
-### Radius Control
-
-1. Go to **Settings** → **Proximity Chat**
-2. Use the **slider** (5-500 studs) for quick adjustment
-3. Or type an **exact value** (1-999) in the input field
-4. The status bar shows your current radius and nearby player count
-
-### Roleplay Presets
-
-1. Go to **Settings** → **Roleplay Preset**
-2. Pick a personality: Pirate Captain, Medieval Knight, Wizard, etc.
-3. Or write your own **Custom Prompt** for full control
+```js
+const PORT = 3333;  // change this
+```
 
 ---
 
-## Settings Reference
+## executor compatibility
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Ollama URL | `http://localhost:11434` | Your Ollama server address |
-| Model | `qwen2.5:7b` | Which model to use |
-| Temperature | 0.7 | Creativity (0 = focused, 2 = wild) |
-| Memory Length | 50 | How many messages to remember |
-| Proximity Radius | 50 studs | Detection range |
-| Response Delay | 1.5s | Delay before responding (feels natural) |
-| Chat Prefix | `[AI]` | Prefix for AI messages in game chat |
-| Auto-Respond | ON | Toggle proximity responses on/off |
-| Typing Animation | ON | Show typing dots while waiting |
+| executor | HTTP function | works? |
+|----------|--------------|--------|
+| Synapse X | `syn.request` | yes |
+| KRNL | `http_request` | yes |
+| Wave | `request` | yes |
+| Fluxus | `fluxus.request` | yes |
+| Script-Ware | `http_request` | yes |
+| Delta | `http_request` | yes |
 
----
-
-## Executor Compatibility
-
-| Executor | HTTP Support | Status |
-|----------|-------------|--------|
-| Synapse X | `syn.request` | Working |
-| KRNL | `http_request` | Working |
-| Wave | `request` | Working |
-| Fluxus | `fluxus.request` | Working |
-| Script-Ware | `http_request` | Working |
-| Delta | `http_request` | Working |
-
-The script auto-detects your executor's HTTP function.
+the script auto-detects which one to use.
 
 ---
 
-## Troubleshooting
+## troubleshooting
 
-| Problem | Fix |
+| problem | fix |
 |---------|-----|
-| "Your executor does not support HTTP" | Your executor lacks HTTP support. Try a different one. |
-| "Cannot connect to Ollama" | Make sure Ollama is running (`ollama serve` or open the app) |
-| AI doesn't respond to nearby players | Check Auto-Respond is ON, radius is large enough, player isn't blacklisted |
-| Luna UI doesn't load | Your executor may not support loadstring. Check executor docs. |
-| Responses are slow | Larger models are slower. Try `qwen2.5:3b` for faster responses. |
+| "ur executor doesnt support http" | your executor doesnt support HTTP. try a different one. |
+| "cant reach ollama" | make sure ollama is running (`ollama serve` or open the app) |
+| AI doesnt reply to nearby players | check Auto-Respond is ON, radius is big enough, player isnt blacklisted |
+| luna UI doesnt load | your executor might not support loadstring |
+| responses are slow | bigger models = slower. try `qwen2.5:3b` |
 
 ---
 
-## Configuration
+## editing defaults
 
-Edit the top of `ollama-roblox.lua` to change defaults:
+at the top of `ollama-roblox.lua`:
 
 ```lua
-local OLLAMA_URL = "http://localhost:11434"
-
 local Settings = {
     Model = "qwen2.5:7b",
     Temperature = 0.7,
@@ -148,6 +153,6 @@ local Settings = {
 
 ---
 
-## License
+## license
 
 MIT

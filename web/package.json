@@ -1,0 +1,13 @@
+{
+  "name": "ollama-web",
+  "version": "1.0.0",
+  "description": "Web UI for Ollama",
+  "bin": "server.js",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}

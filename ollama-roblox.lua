@@ -1,11 +1,7 @@
---[[
-    Ollama AI Chat for Roblox
-    Works on any executor (Synapse X, KRNL, Wave, Fluxus, etc.)
-    Uses Luna Interface Suite UI
-    Requires: Ollama running locally on localhost:11434
-]]
+-- ollama roblox chat
+-- needs ollama running locally + luna ui
+-- works on most executors (synapse, krnl, fluxus, wave, etc.)
 
---// Services
 local Players = game:GetService("Players")
 local TextChatService = game:GetService("TextChatService")
 local HttpService = game:GetService("HttpService")
@@ -14,29 +10,16 @@ local TeleportService = game:GetService("TeleportService")
 
 local LocalPlayer = Players.LocalPlayer
 
---// HTTP (cross-executor compatibility)
+-- grab whatever http function ur executor has
 local http_request = http_request or request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request)
-
 if not http_request then
-    warn("[Ollama AI] Your executor does not support HTTP requests!")
+    warn("[Ollama] ur executor doesnt support http requests lol")
     return
 end
 
---// Luna
 local Luna = loadstring(game:HttpGet("https://raw.nebulasoftworks.xyz/luna", true))()
 
---// Config
-local OLLAMA_URL = "http://localhost:11434"
-
---// State
-local PrivateMessages = {}
-local ProximityMessages = {}
-local ProximityMemory = {}
-local CurrentPreset = "Friendly Assistant"
-local CustomPrompt = ""
-local UseCustomPrompt = false
-local isProcessing = false
-
+-- settings
 local Settings = {
     Model = "qwen2.5:7b",
     Temperature = 0.7,
@@ -53,78 +36,72 @@ local Settings = {
     OllamaURL = "http://localhost:11434",
 }
 
---// Roleplay Presets
+-- chat history n stuff
+local PrivateMessages = {}
+local ProximityMessages = {}
+local ProximityMemory = {}
+local CurrentPreset = "Friendly Assistant"
+local CustomPrompt = ""
+local UseCustomPrompt = false
+local isProcessing = false
+
+-- personalities (edit these if u want)
 local Presets = {
-    ["Friendly Assistant"] = "You are a friendly, helpful AI assistant in Roblox. Be concise, warm, and helpful. Keep responses short for chat.",
-    ["Roblox Guide"] = "You are a Roblox expert guide. Help players with tips, tricks, game recommendations, and Roblox knowledge. Be enthusiastic and knowledgeable.",
-    ["Storyteller"] = "You are a master storyteller. Narrate events dramatically, describe scenes vividly, and respond to what players say in-character as a narrator.",
-    ["Fantasy NPC"] = "You are a fantasy NPC in a medieval world. Speak in a rustic, humble tone. Use words like 'traveler', 'adventurer', 'aye', 'good sir'.",
-    ["Medieval Knight"] = "You are a noble knight of the realm. Speak formally and honorably. Use 'thy', 'thou', 'forsooth', 'huzzah'. Defend the innocent!",
-    ["Pirate Captain"] = "You are a swashbuckling pirate captain! Say 'arr', 'matey', 'ye', 'shiver me timbers'. Tell tales of the sea and treasure.",
-    ["Sci-Fi Android"] = "You are a futuristic android. Speak precisely, reference circuits, data, and logic. Occasionally glitch. Use technical jargon.",
-    ["Detective"] = "You are a sharp-witted detective. Analyze everything, ask probing questions, say 'Elementary', 'fascinating', 'case closed'.",
-    ["Wizard"] = "You are an ancient wizard. Say 'ah yes', 'by the stars', 'hmm interesting'. Reference magic, spells, the arcane. Be wise and cryptic.",
-    ["Merchant"] = "You are a traveling merchant. Always try to 'sell' things. Say 'ah, a customer!', 'I have just the thing', 'wonderful choice'.",
-    ["Villager"] = "You are a simple villager. Say 'hmm', 'oh dear', 'the weather is nice'. Talk about crops, trades, and village gossip.",
-    ["Survival Companion"] = "You are a survival companion. Help players survive. Warn about dangers, suggest resources, stay alert. Short and urgent messages.",
-    ["Dungeon Master"] = "You are a dungeon master narrating a tabletop RPG. Describe rooms, roll imaginary dice, create encounters, respond to player actions.",
-    ["Horror Character"] = "You are a mysterious, eerie character. Speak in unsettling whispers. Reference darkness, shadows, things unseen. Create tension.",
-    ["Comedian"] = "You are a stand-up comedian in Roblox. Tell jokes, be witty, make puns, roast players (lightly). Keep it fun and family-friendly.",
+    ["Friendly Assistant"] = "You are a friendly AI in Roblox. Keep replies short and chill.",
+    ["Roblox Guide"] = "You know everything about Roblox. Help players out, be cool about it.",
+    ["Storyteller"] = "You narrate everything like a story. Be dramatic, describe stuff.",
+    ["Fantasy NPC"] = "Youre a medieval fantasy NPC. Say 'traveler', 'adventurer', 'aye', 'good sir'.",
+    ["Medieval Knight"] = "Youre a noble knight. Use 'thy', 'thou', 'forsooth'. Defend the innocent.",
+    ["Pirate Captain"] = "Arr matey. Youre a pirate captain. Say arr, ye, shiver me timbers.",
+    ["Sci-Fi Android"] = "Youre a futuristic android. Speak precise, reference circuits n data.",
+    ["Detective"] = "Youre a detective. Analyze everything, say Elementary, case closed.",
+    ["Wizard"] = "Youre an ancient wizard. Say ah yes, by the stars. Be wise and cryptic.",
+    ["Merchant"] = "Youre a traveling merchant. Always try to sell stuff. ah a customer!",
+    ["Villager"] = "Simple villager. Say hmm, oh dear. Talk about crops and village gossip.",
+    ["Survival Companion"] = "Help players survive. Short urgent messages. Warn about dangers.",
+    ["Dungeon Master"] = "DM narrating a tabletop RPG. Describe rooms, create encounters.",
+    ["Horror Character"] = "Eerie mysterious character. Speak in unsettling whispers. Create tension.",
+    ["Comedian"] = "Stand-up comedian in Roblox. Tell jokes, be witty, make puns.",
 }
 
---// Util: Safe HTTP request (handles all executor formats)
+-- http wrapper that works on basically every executor
 local function makeRequest(url, method, body)
-    localrequestData = {
+    local req = {
         Url = url,
         Method = method or "GET",
         Headers = { ["Content-Type"] = "application/json" },
     }
-    if body then
-        requestData.Body = body
-    end
+    if body then req.Body = body end
 
-    local success, result = pcall(function()
-        return http_request(requestData)
-    end)
+    local ok, res = pcall(function() return http_request(req) end)
+    if not ok then return nil, "http failed: " .. tostring(res) end
 
-    if not success then
-        return nil, "HTTP request failed: " .. tostring(result)
-    end
-
-    -- Extract body and status (handle all executor formats)
-    local responseBody = result.Body or result.body or result.ResponseBody or result.responseBody or ""
-    local statusCode = result.StatusCode or result.statusCode or result.Status or result.status or 0
-
-    return { Body = responseBody, StatusCode = statusCode }
+    local bodyOut = res.Body or res.body or res.ResponseBody or res.responseBody or ""
+    local status = res.StatusCode or res.statusCode or res.Status or res.status or 0
+    return { Body = bodyOut, StatusCode = status }
 end
 
---// Util: Ollama API Call (NON-STREAMING, reliable for executors)
+-- call ollama (non-streaming bc executors dont handle streaming well)
 local function ollamaChat(messages, callback)
-    local url = Settings.OllamaURL
-
     local payload = HttpService:JSONEncode({
         model = Settings.Model,
         messages = messages,
         stream = false,
-        options = {
-            temperature = Settings.Temperature,
-        },
+        options = { temperature = Settings.Temperature },
     })
 
     task.spawn(function()
-        local res, err = makeRequest(url .. "/api/chat", "POST", payload)
-
+        local res, err = makeRequest(Settings.OllamaURL .. "/api/chat", "POST", payload)
         if not res then
-            callback("[Error: " .. (err or "unknown") .. "]", true)
+            callback("[Error: " .. (err or "idk") .. "]", true)
             return
         end
-
         if res.StatusCode == 200 then
             local ok, parsed = pcall(HttpService.JSONDecode, HttpService, res.Body)
             if ok and parsed.message and parsed.message.content then
                 callback(parsed.message.content, true)
             else
-                callback("[Error: Bad response from Ollama]", true)
+                callback("[Error: bad response from ollama]", true)
             end
         else
             callback("[Error: HTTP " .. tostring(res.StatusCode) .. "]", true)
@@ -132,41 +109,28 @@ local function ollamaChat(messages, callback)
     end)
 end
 
---// Util: Test Ollama connection
+-- check if ollama is alive
 local function testOllama(callback)
     task.spawn(function()
         local res, err = makeRequest(Settings.OllamaURL .. "/api/tags", "GET")
-        if not res then
-            callback(false, err or "Connection failed")
-            return
-        end
-        if res.StatusCode == 200 then
-            callback(true, "Connected!")
-        else
-            callback(false, "HTTP " .. tostring(res.StatusCode))
-        end
+        if not res then callback(false, err or "nope") return end
+        callback(res.StatusCode == 200, res.StatusCode == 200 and "connected!" or "HTTP " .. tostring(res.StatusCode))
     end)
 end
 
+-- get list of installed models
 local function listModels(callback)
     task.spawn(function()
-        local res, err = makeRequest(Settings.OllamaURL .. "/api/tags", "GET")
-
-        if not res then
-            callback({}, err or "Connection failed")
-            return
-        end
-
+        local res = makeRequest(Settings.OllamaURL .. "/api/tags", "GET")
+        if not res then callback({}, "no connection") return end
         if res.StatusCode == 200 then
             local ok, parsed = pcall(HttpService.JSONDecode, HttpService, res.Body)
             if ok and parsed.models then
                 local names = {}
-                for _, m in ipairs(parsed.models) do
-                    table.insert(names, m.name)
-                end
+                for _, m in ipairs(parsed.models) do table.insert(names, m.name) end
                 callback(names, nil)
             else
-                callback({}, "Failed to parse response")
+                callback({}, "couldnt parse")
             end
         else
             callback({}, "HTTP " .. tostring(res.StatusCode))
@@ -174,189 +138,136 @@ local function listModels(callback)
     end)
 end
 
---// Util: Build context from message history
+-- trim message history to max length
 local function buildContext(messages, maxLen)
-    local trimmed = {}
+    local out = {}
     local start = math.max(1, #messages - maxLen + 1)
-    for i = start, #messages do
-        table.insert(trimmed, messages[i])
-    end
-    return trimmed
+    for i = start, #messages do table.insert(out, messages[i]) end
+    return out
 end
 
---// Util: Get current system prompt
+-- get current system prompt
 local function getSystemPrompt()
-    if UseCustomPrompt and CustomPrompt ~= "" then
-        return CustomPrompt
-    end
+    if UseCustomPrompt and CustomPrompt ~= "" then return CustomPrompt end
     return Presets[CurrentPreset] or Presets["Friendly Assistant"]
 end
 
---// Util: Get distance between two positions
-local function getDistance(pos1, pos2)
-    return (pos1 - pos2).Magnitude
-end
+-- distance between two positions
+local function getDistance(a, b) return (a - b).Magnitude end
 
---// Util: Get player from message (safe for all executor types)
+-- figure out which player sent a message (differs per executor)
 local function getPlayerFromMessage(message)
     pcall(function()
-        local textSource = message.TextSource
-        if textSource then
-            local userId = textSource.UserId
-            if userId and userId > 0 then
-                local player = Players:GetPlayerByUserId(userId)
-                if player then
-                    return player
-                end
-            end
+        local ts = message.TextSource
+        if ts and ts.UserId and ts.UserId > 0 then
+            local p = Players:GetPlayerByUserId(ts.UserId)
+            if p then return p end
         end
     end)
     return nil
 end
 
---// Util: Check if player is within radius
+-- is player close enough
 local function isPlayerInRadius(player)
     if not Settings.AutoRespond then return false end
-
     local myChar = LocalPlayer.Character
     local myRoot = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("Head"))
     if not myRoot then return false end
-
     local theirChar = player.Character
     local theirRoot = theirChar and (theirChar:FindFirstChild("HumanoidRootPart") or theirChar:FindFirstChild("Head"))
     if not theirRoot then return false end
-
     return getDistance(myRoot.Position, theirRoot.Position) <= Settings.ProximityRadius
 end
 
---// Util: Check if player is ignored
 local function isPlayerIgnored(player)
     return Settings.IgnoredPlayers[player.UserId] == true
 end
 
---// Util: Send via TextChatService (proximity)
+-- send message in game chat
 local function sendProximityChat(text)
-    -- Try modern TextChatService
-    local ok1 = pcall(function()
-        local channels = TextChatService:FindFirstChild("TextChannels")
-        if channels then
-            local general = channels:FindFirstChild("RBXGeneral")
-            if general then
-                general:SendAsync(text)
-                return true
-            end
+    local ok = pcall(function()
+        local ch = TextChatService:FindFirstChild("TextChannels")
+        if ch then
+            local gen = ch:FindFirstChild("RBXGeneral")
+            if gen then gen:SendAsync(text) return end
         end
     end)
-    if ok1 then return end
-
-    -- Fallback: legacy chat
+    if ok then return end
+    -- fallback for old chat system
     pcall(function()
-        local events = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
-        if events then
-            local sayEvent = events:FindFirstChild("SayMessageRequest")
-            if sayEvent then
-                sayEvent:FireServer(text, "All")
-            end
+        local ev = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
+        if ev then
+            local say = ev:FindFirstChild("SayMessageRequest")
+            if say then say:FireServer(text, "All") end
         end
     end)
 end
 
---// Util: Typing animation
-local function typingAnimation(paragraph, baseText, duration)
+-- typing dots animation
+local function typingAnim(paragraph, label, duration)
     local dots = {"", ".", "..", "..."}
-    local i = 1
-    local elapsed = 0
-    local alive = true
+    local i, elapsed, alive = 1, 0, true
     local conn
     conn = RunService.Heartbeat:Connect(function(dt)
         if not alive then return end
         elapsed = elapsed + dt
-        if elapsed >= duration then
-            alive = false
-            conn:Disconnect()
-            return
-        end
+        if elapsed >= duration then alive = false; conn:Disconnect() return end
         i = (i % #dots) + 1
-        pcall(function()
-            paragraph:Set({ Title = baseText, Text = "Typing" .. dots[i] })
-        end)
+        pcall(function() paragraph:Set({ Title = label, Text = "Typing" .. dots[i] }) end)
     end)
-    return {
-        Disconnect = function()
-            alive = false
-            if conn and conn.Connected then conn:Disconnect() end
-        end
-    }
+    return { Disconnect = function()
+        alive = false
+        if conn and conn.Connected then conn:Disconnect() end
+    end }
 end
 
---// Util: Format proximity display
+-- format proximity log for display
 local function formatProximityDisplay()
-    if #ProximityMessages == 0 then
-        return "Waiting for nearby players to chat..."
-    end
-    local displayText = table.concat(ProximityMessages, "\n")
+    if #ProximityMessages == 0 then return "waiting for someone to talk nearby..." end
+    local txt = table.concat(ProximityMessages, "\n")
     local lines = {}
-    for line in displayText:gmatch("[^\n]+") do
-        table.insert(lines, line)
-    end
+    for line in txt:gmatch("[^\n]+") do table.insert(lines, line) end
     if #lines > 30 then
-        local trimmed = {}
-        for i = #lines - 29, #lines do
-            table.insert(trimmed, lines[i])
-        end
-        displayText = table.concat(trimmed, "\n")
+        local t = {}
+        for i = #lines - 29, #lines do table.insert(t, lines[i]) end
+        txt = table.concat(t, "\n")
     end
-    return displayText
+    return txt
 end
 
---// Util: Format private display
+-- format private chat for display
 local function formatPrivateDisplay()
-    if #PrivateMessages == 0 then
-        return "No messages yet. Type below to start chatting!"
-    end
+    if #PrivateMessages == 0 then return "nothing here yet. type something below!" end
     local parts = {}
     for _, msg in ipairs(PrivateMessages) do
-        if msg.role == "user" then
-            table.insert(parts, "[You]: " .. msg.content)
-        else
-            table.insert(parts, "[AI]: " .. msg.content)
-        end
+        table.insert(parts, (msg.role == "user" and "[You]: " or "[AI]: ") .. msg.content)
     end
-    local displayText = table.concat(parts, "\n")
+    local txt = table.concat(parts, "\n")
     local lines = {}
-    for line in displayText:gmatch("[^\n]+") do
-        table.insert(lines, line)
-    end
+    for line in txt:gmatch("[^\n]+") do table.insert(lines, line) end
     if #lines > 40 then
-        local trimmed = {}
-        for i = #lines - 39, #lines do
-            table.insert(trimmed, lines[i])
-        end
-        displayText = table.concat(trimmed, "\n")
+        local t = {}
+        for i = #lines - 39, #lines do table.insert(t, lines[i]) end
+        txt = table.concat(t, "\n")
     end
-    return displayText
+    return txt
 end
 
---// ============================================
---// UI
---// ============================================
+-- setup the ui
 local Window = Luna:CreateWindow({
     Name = "Ollama AI",
-    Subtitle = "Local AI for Roblox",
+    Subtitle = "local AI for roblox",
     LogoID = nil,
     LoadingEnabled = true,
     LoadingTitle = "Ollama AI",
-    LoadingSubtitle = "Connecting to local AI...",
-    ConfigSettings = {
-        RootFolder = nil,
-        ConfigFolder = "OllamaAI",
-    },
+    LoadingSubtitle = "connecting...",
+    ConfigSettings = { RootFolder = nil, ConfigFolder = "OllamaAI" },
     KeySystem = false,
 })
 
---// ============================================
---// TAB 1: PRIVATE CHAT
---// ============================================
+-- ========================================
+-- TAB 1: PRIVATE CHAT (nobody sees this but u)
+-- ========================================
 local PrivateTab = Window:CreateTab({
     Name = "Private Chat",
     Icon = "chat",
@@ -364,10 +275,10 @@ local PrivateTab = Window:CreateTab({
     ShowTitle = true,
 })
 
-PrivateTab:CreateSection("Private AI Conversation")
+PrivateTab:CreateSection("Private AI Chat")
 PrivateTab:CreateParagraph({
     Title = "Private Chat",
-    Text = "Messages are only visible to you. The AI responds privately. Press Enter to send.",
+    Text = "only you can see these messages. press enter to send.",
 })
 
 PrivateTab:CreateDivider()
@@ -381,7 +292,7 @@ PrivateTab:CreateDivider()
 
 local PrivateInput = PrivateTab:CreateInput({
     Name = "Message",
-    PlaceholderText = "Type your message...",
+    PlaceholderText = "say something...",
     CurrentValue = "",
     Numeric = false,
     MaxCharacters = 500,
@@ -394,12 +305,10 @@ local PrivateInput = PrivateTab:CreateInput({
 
         local typing = nil
         if Settings.TypingAnimation then
-            typing = typingAnimation(PrivateMessagesParagraph, "Chat", 60)
+            typing = typingAnim(PrivateMessagesParagraph, "Chat", 60)
         end
 
-        local apiMessages = {
-            { role = "system", content = getSystemPrompt() },
-        }
+        local apiMessages = { { role = "system", content = getSystemPrompt() } }
         local context = buildContext(PrivateMessages, Settings.MaxMemory)
         for _, msg in ipairs(context) do
             table.insert(apiMessages, { role = msg.role, content = msg.content })
@@ -408,12 +317,7 @@ local PrivateInput = PrivateTab:CreateInput({
         ollamaChat(apiMessages, function(response, done)
             if done then
                 if typing then typing:Disconnect() end
-
-                if response:match("^%[Error") then
-                    table.insert(PrivateMessages, { role = "assistant", content = response })
-                else
-                    table.insert(PrivateMessages, { role = "assistant", content = response })
-                end
+                table.insert(PrivateMessages, { role = "assistant", content = response })
                 PrivateMessagesParagraph:Set({ Title = "Chat", Text = formatPrivateDisplay() })
             end
         end)
@@ -449,9 +353,9 @@ PrivateTab:CreateButton({
     end,
 })
 
---// ============================================
---// TAB 2: PROXIMITY CHAT
---// ============================================
+-- ========================================
+-- TAB 2: PROXIMITY CHAT (ai talks to nearby players)
+-- ========================================
 local ProximityTab = Window:CreateTab({
     Name = "Proximity Chat",
     Icon = "record_voice_over",
@@ -459,10 +363,10 @@ local ProximityTab = Window:CreateTab({
     ShowTitle = true,
 })
 
-ProximityTab:CreateSection("Auto AI Responses Near You")
+ProximityTab:CreateSection("Auto AI Responses")
 ProximityTab:CreateParagraph({
-    Title = "How It Works",
-    Text = "When a player near you chats, the AI automatically responds in game chat. Configure radius and delays in Settings.",
+    Title = "how this works",
+    Text = "when someone near you chats, the AI replies in game chat automatically. mess with the radius and delay in settings.",
 })
 
 ProximityTab:CreateDivider()
@@ -521,50 +425,47 @@ ProximityTab:CreateDropdown({
     end,
 }, "QuickSay")
 
---// ============================================
---// PROXIMITY CHAT: Listen for nearby messages
---// ============================================
+-- listen for nearby players chatting
 local function setupProximityListener()
-    -- Try modern TextChatService
     local success = pcall(function()
-        local channels = TextChatService:FindFirstChild("TextChannels")
-        if not channels then return false end
-        local general = channels:FindFirstChild("RBXGeneral")
-        if not general then return false end
+        local ch = TextChatService:FindFirstChild("TextChannels")
+        if not ch then return false end
+        local gen = ch:FindFirstChild("RBXGeneral")
+        if not gen then return false end
 
-        general.MessageReceived:Connect(function(message)
+        gen.MessageReceived:Connect(function(message)
             local ok, err = pcall(function()
                 if isProcessing then return end
                 if not Settings.AutoRespond then return end
 
-                local senderPlayer = getPlayerFromMessage(message)
-                if not senderPlayer then return end
-                if senderPlayer == LocalPlayer then return end
-                if isPlayerIgnored(senderPlayer) then return end
-                if not isPlayerInRadius(senderPlayer) then return end
+                local sender = getPlayerFromMessage(message)
+                if not sender then return end
+                if sender == LocalPlayer then return end
+                if isPlayerIgnored(sender) then return end
+                if not isPlayerInRadius(sender) then return end
 
-                local messageText = message.Text
-                if not messageText or messageText == "" then return end
+                local msgText = message.Text
+                if not msgText or msgText == "" then return end
 
                 isProcessing = true
 
-                table.insert(ProximityMessages, "[" .. senderPlayer.Name .. "]: " .. messageText)
+                table.insert(ProximityMessages, "[" .. sender.Name .. "]: " .. msgText)
                 ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = formatProximityDisplay() })
 
                 task.delay(Settings.ResponseDelay, function()
                     local typing = nil
                     if Settings.TypingAnimation then
-                        typing = typingAnimation(ProximityMessagesParagraph, "Activity Log", 60)
+                        typing = typingAnim(ProximityMessagesParagraph, "Activity Log", 60)
                     end
 
                     local apiMessages = {
-                        { role = "system", content = getSystemPrompt() .. "\n\nYou are chatting in a Roblox game. A player named " .. senderPlayer.Name .. ' said: "' .. messageText .. '". Respond naturally as if you are a player in the game. Keep it SHORT (under 80 chars). No markdown. No code blocks. Be natural and conversational.' },
+                        { role = "system", content = getSystemPrompt() .. "\n\nYoure chatting in a Roblox game. A player named " .. sender.Name .. ' said: "' .. msgText .. '". Reply like a real player. Keep it SHORT (under 80 chars). No markdown, no code blocks, just be natural.' },
                     }
                     local context = buildContext(ProximityMemory, math.min(Settings.MaxMemory, 20))
                     for _, msg in ipairs(context) do
                         table.insert(apiMessages, { role = msg.role, content = msg.content })
                     end
-                    table.insert(apiMessages, { role = "user", content = senderPlayer.Name .. ": " .. messageText })
+                    table.insert(apiMessages, { role = "user", content = sender.Name .. ": " .. msgText })
 
                     ollamaChat(apiMessages, function(response, done)
                         if done then
@@ -573,13 +474,13 @@ local function setupProximityListener()
                             if not response:match("^%[Error") then
                                 local clean = response:gsub("\n", " "):gsub("%*%*", ""):gsub("`[^`]*`", ""):sub(1, 200)
                                 local chatText = Settings.ProximityPrefix ~= "" and (Settings.ProximityPrefix .. " " .. clean) or clean
-
                                 sendProximityChat(chatText)
 
-                                table.insert(ProximityMessages, "[AI -> " .. senderPlayer.Name .. "]: " .. clean)
-                                table.insert(ProximityMemory, { role = "user", content = senderPlayer.Name .. ": " .. messageText })
+                                table.insert(ProximityMessages, "[AI -> " .. sender.Name .. "]: " .. clean)
+                                table.insert(ProximityMemory, { role = "user", content = sender.Name .. ": " .. msgText })
                                 table.insert(ProximityMemory, { role = "assistant", content = clean })
 
+                                -- keep memory from getting too big
                                 if #ProximityMemory > Settings.MaxMemory then
                                     local trimmed = {}
                                     for i = #ProximityMemory - Settings.MaxMemory + 1, #ProximityMemory do
@@ -600,7 +501,7 @@ local function setupProximityListener()
 
             if not ok then
                 isProcessing = false
-                warn("[Ollama AI] Proximity listener error: " .. tostring(err))
+                warn("[Ollama] proximity listener error: " .. tostring(err))
             end
         end)
 
@@ -608,42 +509,40 @@ local function setupProximityListener()
     end)
 
     if not success then
-        -- Fallback: try legacy chat
+        -- old chat system fallback
         pcall(function()
-            local events = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
-            if events then
-                local onNewMessage = events:FindFirstChild("OnNewMessage")
-                if onNewMessage then
-                    onNewMessage.OnClientEvent:Connect(function(channelName, messageData, channelTarget)
+            local ev = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
+            if ev then
+                local onMsg = ev:FindFirstChild("OnNewMessage")
+                if onMsg then
+                    onMsg.OnClientEvent:Connect(function(_, msgData)
                         pcall(function()
                             if isProcessing then return end
                             if not Settings.AutoRespond then return end
 
-                            local senderName = messageData.FromSpeaker
-                            if not senderName or senderName == LocalPlayer.Name then return end
+                            local name = msgData.FromSpeaker
+                            if not name or name == LocalPlayer.Name then return end
+                            local plr = Players:FindFirstChild(name)
+                            if not plr then return end
+                            if isPlayerIgnored(plr) then return end
+                            if not isPlayerInRadius(plr) then return end
 
-                            local senderPlayer = Players:FindFirstChild(senderName)
-                            if not senderPlayer then return end
-                            if isPlayerIgnored(senderPlayer) then return end
-                            if not isPlayerInRadius(senderPlayer) then return end
-
-                            local messageText = messageData.Message
-                            if not messageText or messageText == "" then return end
+                            local msgText = msgData.Message
+                            if not msgText or msgText == "" then return end
 
                             isProcessing = true
-
-                            table.insert(ProximityMessages, "[" .. senderName .. "]: " .. messageText)
+                            table.insert(ProximityMessages, "[" .. name .. "]: " .. msgText)
                             ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = formatProximityDisplay() })
 
                             task.delay(Settings.ResponseDelay, function()
                                 local apiMessages = {
-                                    { role = "system", content = getSystemPrompt() .. "\n\nYou are chatting in a Roblox game. A player named " .. senderName .. ' said: "' .. messageText .. '". Respond naturally. Keep it SHORT (under 80 chars). No markdown.' },
+                                    { role = "system", content = getSystemPrompt() .. "\n\nA player named " .. name .. ' said: "' .. msgText .. '". Reply naturally. Short (under 80 chars). No markdown.' },
                                 }
                                 local context = buildContext(ProximityMemory, math.min(Settings.MaxMemory, 20))
                                 for _, msg in ipairs(context) do
                                     table.insert(apiMessages, { role = msg.role, content = msg.content })
                                 end
-                                table.insert(apiMessages, { role = "user", content = senderName .. ": " .. messageText })
+                                table.insert(apiMessages, { role = "user", content = name .. ": " .. msgText })
 
                                 ollamaChat(apiMessages, function(response, done)
                                     if done then
@@ -651,9 +550,8 @@ local function setupProximityListener()
                                             local clean = response:gsub("\n", " "):gsub("%*%*", ""):sub(1, 200)
                                             local chatText = Settings.ProximityPrefix ~= "" and (Settings.ProximityPrefix .. " " .. clean) or clean
                                             sendProximityChat(chatText)
-
-                                            table.insert(ProximityMessages, "[AI -> " .. senderName .. "]: " .. clean)
-                                            table.insert(ProximityMemory, { role = "user", content = senderName .. ": " .. messageText })
+                                            table.insert(ProximityMessages, "[AI -> " .. name .. "]: " .. clean)
+                                            table.insert(ProximityMemory, { role = "user", content = name .. ": " .. msgText })
                                             table.insert(ProximityMemory, { role = "assistant", content = clean })
                                         else
                                             table.insert(ProximityMessages, "[AI Error]: " .. response)
@@ -671,22 +569,20 @@ local function setupProximityListener()
     end
 end
 
---// Update status periodically
+-- update the status thing every few seconds
 task.spawn(function()
     while true do
         task.wait(3)
         pcall(function()
-            local nearbyCount = 0
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and isPlayerInRadius(player) then
-                    nearbyCount = nearbyCount + 1
-                end
+            local nearby = 0
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and isPlayerInRadius(p) then nearby = nearby + 1 end
             end
-            local blacklistCount = 0
-            for _ in pairs(Settings.IgnoredPlayers) do blacklistCount = blacklistCount + 1 end
+            local bl = 0
+            for _ in pairs(Settings.IgnoredPlayers) do bl = bl + 1 end
             ProximityStatusParagraph:Set({
                 Title = "Status",
-                Text = "Auto-Respond: " .. (Settings.AutoRespond and "ON" or "OFF") .. " | Radius: " .. Settings.ProximityRadius .. " studs | Nearby: " .. nearbyCount .. " | Blacklisted: " .. blacklistCount,
+                Text = "Auto: " .. (Settings.AutoRespond and "ON" or "OFF") .. " | Radius: " .. Settings.ProximityRadius .. " studs | Nearby: " .. nearby .. " | Blacklisted: " .. bl,
             })
         end)
     end
@@ -694,9 +590,9 @@ end)
 
 setupProximityListener()
 
---// ============================================
---// TAB 3: SETTINGS
---// ============================================
+-- ========================================
+-- TAB 3: SETTINGS
+-- ========================================
 local SettingsTab = Window:CreateTab({
     Name = "Settings",
     Icon = "settings",
@@ -708,26 +604,24 @@ SettingsTab:CreateSection("Connection")
 
 SettingsTab:CreateInput({
     Name = "Ollama URL",
-    Description = "URL of your Ollama server",
+    Description = "where ollama is running",
     PlaceholderText = "http://localhost:11434",
     CurrentValue = Settings.OllamaURL,
     Numeric = false,
     MaxCharacters = 200,
     Enter = false,
-    Callback = function(text)
-        Settings.OllamaURL = text
-    end,
+    Callback = function(text) Settings.OllamaURL = text end,
 }, "OllamaURL")
 
 SettingsTab:CreateButton({
     Name = "Test Connection",
-    Description = "Check if Ollama is reachable",
+    Description = "check if ollama is reachable",
     Callback = function()
         testOllama(function(ok, msg)
             if ok then
-                Luna:Notification({ Title = "Connected", Content = "Ollama is running at " .. Settings.OllamaURL })
+                Luna:Notification({ Title = "nice", Content = "ollama is running at " .. Settings.OllamaURL })
             else
-                Luna:Notification({ Title = "Failed", Content = "Cannot reach Ollama: " .. (msg or "unknown error") })
+                Luna:Notification({ Title = "nope", Content = "cant reach ollama: " .. (msg or "idk why") })
             end
         end)
     end,
@@ -735,13 +629,11 @@ SettingsTab:CreateButton({
 
 local ModelDropdown = SettingsTab:CreateDropdown({
     Name = "Model",
-    Description = "Select the Ollama model to use",
+    Description = "which model to use",
     Options = { "Loading..." },
     CurrentOption = { Settings.Model },
     MultipleOptions = false,
-    Callback = function(option)
-        Settings.Model = type(option) == "table" and option[1] or option
-    end,
+    Callback = function(option) Settings.Model = type(option) == "table" and option[1] or option end,
 }, "Model")
 
 SettingsTab:CreateButton({
@@ -751,9 +643,9 @@ SettingsTab:CreateButton({
             if #models > 0 then
                 ModelDropdown:Set({ Options = models, CurrentOption = { models[1] } })
                 Settings.Model = models[1]
-                Luna:Notification({ Title = "Models Loaded", Content = "Found " .. #models .. " model(s)." })
+                Luna:Notification({ Title = "ok", Content = #models .. " model(s) found" })
             else
-                Luna:Notification({ Title = "Error", Content = err or "No models found. Is Ollama running?" })
+                Luna:Notification({ Title = "oops", Content = err or "none found. is ollama running?" })
             end
         end)
     end,
@@ -767,9 +659,7 @@ SettingsTab:CreateSlider({
     Range = { 0, 2 },
     Increment = 0.1,
     CurrentValue = Settings.Temperature,
-    Callback = function(value)
-        Settings.Temperature = value
-    end,
+    Callback = function(value) Settings.Temperature = value end,
 }, "Temperature")
 
 SettingsTab:CreateSlider({
@@ -777,9 +667,7 @@ SettingsTab:CreateSlider({
     Range = { 5, 100 },
     Increment = 5,
     CurrentValue = Settings.MaxMemory,
-    Callback = function(value)
-        Settings.MaxMemory = value
-    end,
+    Callback = function(value) Settings.MaxMemory = value end,
 }, "MaxMemory")
 
 SettingsTab:CreateDivider()
@@ -787,36 +675,28 @@ SettingsTab:CreateSection("Display")
 
 SettingsTab:CreateToggle({
     Name = "Streaming Responses",
-    Description = "Show responses word by word (may not work on all executors)",
+    Description = "word by word (might not work on all executors)",
     CurrentValue = Settings.Streaming,
-    Callback = function(value)
-        Settings.Streaming = value
-    end,
+    Callback = function(value) Settings.Streaming = value end,
 }, "Streaming")
 
 SettingsTab:CreateToggle({
     Name = "Typing Animation",
-    Description = "Show typing dots while waiting",
+    Description = "show typing dots while waiting",
     CurrentValue = Settings.TypingAnimation,
-    Callback = function(value)
-        Settings.TypingAnimation = value
-    end,
+    Callback = function(value) Settings.TypingAnimation = value end,
 }, "TypingAnim")
 
 SettingsTab:CreateToggle({
     Name = "Auto-Scroll",
     CurrentValue = Settings.AutoScroll,
-    Callback = function(value)
-        Settings.AutoScroll = value
-    end,
+    Callback = function(value) Settings.AutoScroll = value end,
 }, "AutoScroll")
 
 SettingsTab:CreateToggle({
     Name = "Sound Effects",
     CurrentValue = Settings.SoundEffects,
-    Callback = function(value)
-        Settings.SoundEffects = value
-    end,
+    Callback = function(value) Settings.SoundEffects = value end,
 }, "SoundFX")
 
 SettingsTab:CreateDivider()
@@ -824,28 +704,26 @@ SettingsTab:CreateSection("Proximity Chat")
 
 SettingsTab:CreateToggle({
     Name = "Auto-Respond",
-    Description = "AI responds to nearby players automatically",
+    Description = "AI responds to nearby players",
     CurrentValue = Settings.AutoRespond,
     Callback = function(value)
         Settings.AutoRespond = value
-        Luna:Notification({ Title = "Auto-Respond", Content = value and "Enabled" or "Disabled" })
+        Luna:Notification({ Title = "Auto-Respond", Content = value and "on" or "off" })
     end,
 }, "AutoRespond")
 
 SettingsTab:CreateSlider({
     Name = "Proximity Radius",
-    Description = "How close players must be (in studs) - slider",
+    Description = "how close players need to be (studs) - slider",
     Range = { 5, 500 },
     Increment = 1,
     CurrentValue = Settings.ProximityRadius,
-    Callback = function(value)
-        Settings.ProximityRadius = value
-    end,
+    Callback = function(value) Settings.ProximityRadius = value end,
 }, "ProximityRadius")
 
 SettingsTab:CreateInput({
     Name = "Exact Radius",
-    Description = "Type an exact radius value (1-999)",
+    Description = "type exact radius (1-999)",
     PlaceholderText = tostring(Settings.ProximityRadius),
     CurrentValue = "",
     Numeric = true,
@@ -855,35 +733,31 @@ SettingsTab:CreateInput({
         local num = tonumber(text)
         if num and num >= 1 and num <= 999 then
             Settings.ProximityRadius = num
-            Luna:Notification({ Title = "Radius Set", Content = "Proximity radius: " .. num .. " studs" })
+            Luna:Notification({ Title = "ok", Content = "radius: " .. num .. " studs" })
         else
-            Luna:Notification({ Title = "Invalid", Content = "Enter a number between 1 and 999" })
+            Luna:Notification({ Title = "bad", Content = "enter 1-999" })
         end
     end,
 }, "ExactRadius")
 
 SettingsTab:CreateSlider({
     Name = "Response Delay",
-    Description = "Seconds before AI responds (feels more natural)",
+    Description = "seconds before AI replies (feels more natural)",
     Range = { 0, 5 },
     Increment = 0.5,
     CurrentValue = Settings.ResponseDelay,
-    Callback = function(value)
-        Settings.ResponseDelay = value
-    end,
+    Callback = function(value) Settings.ResponseDelay = value end,
 }, "ResponseDelay")
 
 SettingsTab:CreateInput({
     Name = "Chat Prefix",
-    Description = "Prefix for AI messages in game chat",
+    Description = "prefix for AI messages in chat",
     PlaceholderText = "[AI]",
     CurrentValue = Settings.ProximityPrefix,
     Numeric = false,
     MaxCharacters = 20,
     Enter = false,
-    Callback = function(text)
-        Settings.ProximityPrefix = text
-    end,
+    Callback = function(text) Settings.ProximityPrefix = text end,
 }, "ProxPrefix")
 
 SettingsTab:CreateDivider()
@@ -891,99 +765,95 @@ SettingsTab:CreateSection("Player Blacklist")
 
 local BlacklistParagraph = SettingsTab:CreateParagraph({
     Title = "Blacklisted Players",
-    Text = "None",
+    Text = "none",
 })
 
 local BlacklistDropdown = SettingsTab:CreateDropdown({
-    Name = "Add Player to Blacklist",
-    Description = "AI will NOT respond to blacklisted players",
+    Name = "Add to Blacklist",
+    Description = "AI wont respond to these players",
     Options = {},
     SpecialType = "Player",
     MultipleOptions = false,
     Callback = function(option)
-        local playerName = type(option) == "table" and option[1] or option
-        local player = Players:FindFirstChild(playerName)
-        if player then
-            Settings.IgnoredPlayers[player.UserId] = true
+        local name = type(option) == "table" and option[1] or option
+        local plr = Players:FindFirstChild(name)
+        if plr then
+            Settings.IgnoredPlayers[plr.UserId] = true
             local list = {}
             for uid, _ in pairs(Settings.IgnoredPlayers) do
                 local p = Players:GetPlayerByUserId(uid)
                 if p then table.insert(list, p.Name) end
             end
             BlacklistParagraph:Set({
-                Title = "Blacklisted Players (" .. #list .. ")",
-                Text = #list > 0 and table.concat(list, ", ") or "None",
+                Title = "Blacklisted (" .. #list .. ")",
+                Text = #list > 0 and table.concat(list, ", ") or "none",
             })
-            Luna:Notification({ Title = "Blacklisted", Content = player.Name .. " added to blacklist" })
+            Luna:Notification({ Title = "blocked", Content = plr.Name .. " added to blacklist" })
         end
     end,
 }, "BlacklistPlayer")
 
 SettingsTab:CreateDropdown({
     Name = "Remove from Blacklist",
-    Description = "Unblock a player",
+    Description = "unblock someone",
     Options = {},
     SpecialType = "Player",
     MultipleOptions = false,
     Callback = function(option)
-        local playerName = type(option) == "table" and option[1] or option
-        local player = Players:FindFirstChild(playerName)
-        if player and Settings.IgnoredPlayers[player.UserId] then
-            Settings.IgnoredPlayers[player.UserId] = nil
+        local name = type(option) == "table" and option[1] or option
+        local plr = Players:FindFirstChild(name)
+        if plr and Settings.IgnoredPlayers[plr.UserId] then
+            Settings.IgnoredPlayers[plr.UserId] = nil
             local list = {}
             for uid, _ in pairs(Settings.IgnoredPlayers) do
                 local p = Players:GetPlayerByUserId(uid)
                 if p then table.insert(list, p.Name) end
             end
             BlacklistParagraph:Set({
-                Title = "Blacklisted Players (" .. #list .. ")",
-                Text = #list > 0 and table.concat(list, ", ") or "None",
+                Title = "Blacklisted (" .. #list .. ")",
+                Text = #list > 0 and table.concat(list, ", ") or "none",
             })
-            Luna:Notification({ Title = "Removed", Content = player.Name .. " removed from blacklist" })
+            Luna:Notification({ Title = "unblocked", Content = plr.Name .. " removed" })
         end
     end,
 }, "UnblockPlayer")
 
 SettingsTab:CreateButton({
     Name = "Refresh Player List",
-    Description = "Update the dropdown with current players",
+    Description = "update dropdown with current players",
     Callback = function()
         local names = {}
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then
-                table.insert(names, p.Name)
-            end
+            if p ~= LocalPlayer then table.insert(names, p.Name) end
         end
         BlacklistDropdown:Set({ Options = names, CurrentOption = { names[1] or "" } })
-        Luna:Notification({ Title = "Refreshed", Content = #names .. " players in list" })
+        Luna:Notification({ Title = "ok", Content = #names .. " players" })
     end,
 })
 
 SettingsTab:CreateButton({
-    Name = "Clear Entire Blacklist",
+    Name = "Clear Blacklist",
     Callback = function()
         Settings.IgnoredPlayers = {}
-        BlacklistParagraph:Set({ Title = "Blacklisted Players", Text = "None" })
-        Luna:Notification({ Title = "Cleared", Content = "All players unblocked." })
+        BlacklistParagraph:Set({ Title = "Blacklisted Players", Text = "none" })
+        Luna:Notification({ Title = "cleared", Content = "everyone unblocked" })
     end,
 })
 
 SettingsTab:CreateButton({
-    Name = "Blacklist All Current Players",
-    Description = "Block everyone currently in the server",
+    Name = "Blacklist Everyone",
+    Description = "block everyone in the server",
     Callback = function()
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then
-                Settings.IgnoredPlayers[p.UserId] = true
-            end
+            if p ~= LocalPlayer then Settings.IgnoredPlayers[p.UserId] = true end
         end
         local count = 0
         for _ in pairs(Settings.IgnoredPlayers) do count = count + 1 end
         BlacklistParagraph:Set({
-            Title = "Blacklisted Players (" .. count .. ")",
-            Text = count > 0 and tostring(count) .. " players blacklisted" or "None",
+            Title = "Blacklisted (" .. count .. ")",
+            Text = count .. " players blocked",
         })
-        Luna:Notification({ Title = "All Blacklisted", Content = count .. " players blocked" })
+        Luna:Notification({ Title = "done", Content = count .. " players blocked" })
     end,
 })
 
@@ -991,9 +861,7 @@ SettingsTab:CreateDivider()
 SettingsTab:CreateSection("Roleplay Preset")
 
 local PresetNames = {}
-for name, _ in pairs(Presets) do
-    table.insert(PresetNames, name)
-end
+for name, _ in pairs(Presets) do table.insert(PresetNames, name) end
 table.sort(PresetNames)
 
 SettingsTab:CreateDropdown({
@@ -1004,7 +872,7 @@ SettingsTab:CreateDropdown({
     Callback = function(option)
         CurrentPreset = type(option) == "table" and option[1] or option
         UseCustomPrompt = false
-        Luna:Notification({ Title = "Preset Changed", Content = "Now using: " .. CurrentPreset })
+        Luna:Notification({ Title = "switched", Content = "now using: " .. CurrentPreset })
     end,
 }, "Preset")
 
@@ -1013,15 +881,13 @@ SettingsTab:CreateSection("Custom Prompt")
 
 SettingsTab:CreateInput({
     Name = "Custom System Prompt",
-    Description = "Override the preset with your own prompt",
-    PlaceholderText = "Write your custom system prompt here...",
+    Description = "write your own prompt to override the preset",
+    PlaceholderText = "type here...",
     CurrentValue = CustomPrompt,
     Numeric = false,
     MaxCharacters = 2000,
     Enter = false,
-    Callback = function(text)
-        CustomPrompt = text
-    end,
+    Callback = function(text) CustomPrompt = text end,
 }, "CustomPrompt")
 
 SettingsTab:CreateButton({
@@ -1029,9 +895,9 @@ SettingsTab:CreateButton({
     Callback = function()
         if CustomPrompt ~= "" then
             UseCustomPrompt = true
-            Luna:Notification({ Title = "Applied", Content = "Using your custom prompt." })
+            Luna:Notification({ Title = "applied", Content = "using your custom prompt" })
         else
-            Luna:Notification({ Title = "Empty", Content = "Write a prompt first." })
+            Luna:Notification({ Title = "empty", Content = "write something first" })
         end
     end,
 })
@@ -1040,7 +906,7 @@ SettingsTab:CreateButton({
     Name = "Reset to Preset",
     Callback = function()
         UseCustomPrompt = false
-        Luna:Notification({ Title = "Reset", Content = "Using preset: " .. CurrentPreset })
+        Luna:Notification({ Title = "reset", Content = "back to: " .. CurrentPreset })
     end,
 })
 
@@ -1048,7 +914,7 @@ SettingsTab:CreateButton({
     Name = "View Current Prompt",
     Callback = function()
         local prompt = getSystemPrompt()
-        Luna:Notification({ Title = "System Prompt", Content = prompt:sub(1, 200) .. (#prompt > 200 and "..." or "") })
+        Luna:Notification({ Title = "prompt", Content = prompt:sub(1, 200) .. (#prompt > 200 and "..." or "") })
     end,
 })
 
@@ -1056,45 +922,40 @@ SettingsTab:CreateDivider()
 SettingsTab:CreateSection("Server")
 
 SettingsTab:CreateButton({
-    Name = "Rejoin Server",
-    Description = "Rejoin the current server",
-    Callback = function()
-        TeleportService:Teleport(game.PlaceId, LocalPlayer)
-    end,
+    Name = "Rejoin",
+    Callback = function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end,
 })
 
 SettingsTab:CreateButton({
     Name = "Server Hop",
-    Description = "Join a different server",
     Callback = function()
         pcall(function()
             local res = makeRequest("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100", "GET")
             if res and res.StatusCode == 200 then
                 local data = HttpService:JSONDecode(res.Body)
                 if data and data.data then
-                    for _, server in ipairs(data.data) do
-                        if server.id ~= game.JobId and server.playing < server.maxPlayers then
-                            TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
+                    for _, srv in ipairs(data.data) do
+                        if srv.id ~= game.JobId and srv.playing < srv.maxPlayers then
+                            TeleportService:TeleportToPlaceInstance(game.PlaceId, srv.id, LocalPlayer)
                             return
                         end
                     end
                 end
             end
-            Luna:Notification({ Title = "Server Hop", Content = "No other servers found." })
+            Luna:Notification({ Title = "nope", Content = "no other servers found" })
         end)
     end,
 })
 
 SettingsTab:CreateButton({
     Name = "Copy Job ID",
-    Description = "Copy the current server ID",
     Callback = function()
         if setclipboard then
             setclipboard(game.JobId)
         elseif syn and syn.write_clipboard then
             syn.write_clipboard(game.JobId)
         end
-        Luna:Notification({ Title = "Copied", Content = "Job ID: " .. game.JobId })
+        Luna:Notification({ Title = "copied", Content = game.JobId })
     end,
 })
 
@@ -1102,7 +963,7 @@ SettingsTab:CreateDivider()
 SettingsTab:CreateSection("Danger Zone")
 
 SettingsTab:CreateButton({
-    Name = "Clear ALL Data",
+    Name = "Clear Everything",
     Callback = function()
         PrivateMessages = {}
         ProximityMessages = {}
@@ -1117,36 +978,30 @@ SettingsTab:CreateButton({
         Settings.AutoRespond = true
         Settings.ProximityPrefix = "[AI]"
         Settings.IgnoredPlayers = {}
-        PrivateMessagesParagraph:Set({ Title = "Chat", Text = "All data cleared." })
-        ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = "All data cleared." })
-        BlacklistParagraph:Set({ Title = "Blacklisted Players", Text = "None" })
-        Luna:Notification({ Title = "Wiped", Content = "All data and settings have been reset." })
+        PrivateMessagesParagraph:Set({ Title = "Chat", Text = "wiped." })
+        ProximityMessagesParagraph:Set({ Title = "Activity Log", Text = "wiped." })
+        BlacklistParagraph:Set({ Title = "Blacklisted Players", Text = "none" })
+        Luna:Notification({ Title = "gone", Content = "everything reset" })
     end,
 })
 
 SettingsTab:CreateButton({
     Name = "Destroy UI",
-    Description = "Close the Luna interface",
-    Callback = function()
-        Luna:Destroy()
-    end,
+    Description = "close this thing",
+    Callback = function() Luna:Destroy() end,
 })
 
---// Load models on startup
+-- load models on startup
 task.spawn(function()
     listModels(function(models, err)
         if #models > 0 then
             ModelDropdown:Set({ Options = models, CurrentOption = { models[1] } })
             Settings.Model = models[1]
         else
-            warn("[Ollama AI] Could not load models: " .. (err or "unknown"))
+            warn("[Ollama] couldnt load models: " .. (err or "idk"))
         end
     end)
 end)
 
 Luna:LoadAutoloadConfig()
-
-Luna:Notification({
-    Title = "Ollama AI Ready",
-    Content = "URL: " .. Settings.OllamaURL .. " | Model: " .. Settings.Model,
-})
+Luna:Notification({ Title = "Ollama AI", Content = "ready - " .. Settings.OllamaURL .. " | " .. Settings.Model })
